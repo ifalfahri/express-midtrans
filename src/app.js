@@ -5,7 +5,7 @@ const passport = require('passport');
 require('./config/passport'); // Load config passport
 
 const authRoutes = require('./routes/authRoutes');
-const { isAuthenticated } = require('./middlewares/authMiddleware');
+const { isAuthenticated, isPaidUser } = require('./middlewares/authMiddleware');
 
 const app = express();
 
@@ -24,7 +24,7 @@ app.use(passport.session());
 app.use('/api/auth', authRoutes);
 
 // Endpoint Protected
-app.get('/api/protected-content', isAuthenticated, (req, res) => {
+app.get('/api/protected-content', isAuthenticated, isPaidUser, (req, res) => {
   res.json({ 
     message: `Halo ${req.user.name}, ini adalah data rahasia.`,
     isPaid: req.user.isPaid 
