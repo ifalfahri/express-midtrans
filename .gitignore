@@ -1,0 +1,26 @@
+# Node modules
+node_modules/
+
+# Environment variables
+.env
+
+
+# Logs
+logs/
+*.log
+
+# Dependency directories (pnpm)
+.pnpm/
+
+# Coverage
+coverage/
+
+# IDE settings
+.vscode/
+.idea/
+.cursor/
+.cursorrules
+.cursorignore
+
+# Mac system files
+.DS_Store
