@@ -5,6 +5,7 @@ const passport = require('passport');
 require('./config/passport'); // Load config passport
 
 const authRoutes = require('./routes/authRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
 const { isAuthenticated, isPaidUser } = require('./middlewares/authMiddleware');
 
 const app = express();
@@ -22,6 +23,7 @@ app.use(passport.session());
 
 // Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // Endpoint Protected
 app.get('/api/protected-content', isAuthenticated, isPaidUser, (req, res) => {

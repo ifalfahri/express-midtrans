@@ -107,6 +107,8 @@ Then fill the values in `.env`:
 - `GOOGLE_CLIENT_SECRET`
 - `MIDTRANS_SERVER_KEY`
 - `MIDTRANS_CLIENT_KEY`
+- `MIDTRANS_IS_PRODUCTION` (use `false` for sandbox)
+- `MIDTRANS_WEBHOOK_URL` (set to `http://localhost:3000/api/payment/webhook`)
 - `SESSION_SECRET`
 
 ### 4. Prisma Setup & Database Migration
@@ -172,6 +174,33 @@ npm start
 
 - All endpoints are plain REST (JSON), test with Postman, HTTPie, Insomnia, etc.
 - Payment can be tested in **Midtrans sandbox environment**.
+
+### Quick Postman Flow
+
+1. Login first via `GET /api/auth/google` and finish OAuth in browser.
+2. Check current user via `GET /api/auth/me`.
+3. Create payment via `POST /api/payment/create-transaction` with body:
+
+```json
+{
+  "amount": 50000,
+  "enabledPayments": ["qris", "gopay", "credit_card", "bank_transfer"]
+}
+```
+
+4. Response returns both:
+   - `snapToken`
+   - `redirectUrl`
+5. Open `redirectUrl`, complete sandbox payment.
+6. Midtrans sends webhook to `POST /api/payment/webhook`.
+7. Check `GET /api/payment/status` and ensure `isPaid` becomes `true`.
+8. Access `GET /api/protected-content` (should pass only after paid).
+
+### Webhook Simulation
+
+- For local webhook testing, expose localhost using a tunnel (e.g. ngrok) and set Midtrans webhook URL to:
+  - `<public-url>/api/payment/webhook`
+- You can also trigger status checks manually by resending webhook payload that contains `order_id`.
 
 ## Learning Outcomes
 
