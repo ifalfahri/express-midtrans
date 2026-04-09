@@ -35,7 +35,8 @@ function mapMidtransToLocalStatus(transactionStatus, fraudStatus) {
 }
 
 function buildOrderId(userId) {
-  return `ORDER-${userId}-${Date.now()}`;
+  const safeUserPart = String(userId || 'user').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'user';
+  return `ORD-${Date.now()}-${safeUserPart}`;
 }
 
 router.post('/create-transaction', isAuthenticated, async (req, res) => {
