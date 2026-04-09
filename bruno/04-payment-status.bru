@@ -1,0 +1,16 @@
+meta {
+  name: 04 Payment Status
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/payment/status
+  body: none
+  auth: none
+}
+
+settings {
+  encodeUrl: true
+  followRedirects: true
+}

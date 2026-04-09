@@ -53,7 +53,7 @@ This is a backend demo project to help understand:
 - **Passport.js** for Google OAuth2
 - **Midtrans** (sandbox mode) for payment gateway
 - **Docker** for local database
-- Testable using Postman or similar REST client
+- Testable using **Bruno** API client
 
 ---
 
@@ -66,15 +66,15 @@ Using **pnpm** (recommended for speed), or you may use **npm** if you prefer.
 #### Using pnpm
 
 ```bash
-git clone <this-repo-url>
-cd <project-folder>
+git clone https://github.com/ifalfahri/express-midtrans.git
+cd express-midtrans
 pnpm install
 ```
 
 #### Or using npm
 
 ```bash
-git clone <this-repo-url>
+git clone https://github.com/ifalfahri/express-midtrans.git
 cd <project-folder>
 npm install
 ```
@@ -142,7 +142,12 @@ npm start
 ```
 
 - Server should run on: `http://localhost:3000`
-- Use Postman to hit endpoints (see API section above).
+- Use Bruno to hit endpoints (see testing flow below).
+
+### 6. Install Bruno (API Client)
+
+- Download Bruno from the official website: [https://www.usebruno.com](https://www.usebruno.com)
+- Open this project collection folder in Bruno: `./bruno`
 
 ---
 
@@ -172,14 +177,22 @@ npm start
 
 ## Testing
 
-- All endpoints are plain REST (JSON), test with Postman, HTTPie, Insomnia, etc.
-- Payment can be tested in **Midtrans sandbox environment**.
+- All endpoints are plain REST (JSON), tested using **Bruno**.
+- Payment is tested in **Midtrans sandbox environment**.
 
-### Quick Postman Flow
+### Final Testing Flow (Bruno + Browser OAuth)
 
-1. Login first via `GET /api/auth/google` and finish OAuth in browser.
-2. Check current user via `GET /api/auth/me`.
-3. Create payment via `POST /api/payment/create-transaction` with body:
+1. Start app with `pnpm dev`.
+2. Open folder `bruno` in Bruno app and select environment `local`.
+3. Login first in browser:
+   - `http://localhost:3000/api/auth/google`
+   - Complete OAuth consent.
+4. Copy `connect.sid` from browser cookie (`localhost`) and add it via **Bruno Cookies UI**:
+   - Domain: `localhost`
+   - Key: `connect.sid`
+   - Value: `<your_cookie_value>`
+5. Run `02 Auth Me` to verify session login.
+6. Run `03 Payment Create Transaction` with body:
 
 ```json
 {
@@ -188,19 +201,35 @@ npm start
 }
 ```
 
-4. Response returns both:
+7. Response returns both:
    - `snapToken`
    - `redirectUrl`
-5. Open `redirectUrl`, complete sandbox payment.
-6. Midtrans sends webhook to `POST /api/payment/webhook`.
-7. Check `GET /api/payment/status` and ensure `isPaid` becomes `true`.
-8. Access `GET /api/protected-content` (should pass only after paid).
+8. Open `redirectUrl`, complete sandbox payment.
+9. Process webhook:
+   - Preferred: use ngrok/public tunnel and configure Midtrans notification URL to `<public-url>/api/payment/webhook`.
+   - Local fallback: run `05 Payment Webhook Manual` and set `orderId` env var from step 7.
+10. Run `04 Payment Status` and ensure `isPaid` becomes `true`.
+11. Run `06 Protected Content` (should pass only after paid).
+12. Run `07 Auth Logout` to end session.
 
 ### Webhook Simulation
 
 - For local webhook testing, expose localhost using a tunnel (e.g. ngrok) and set Midtrans webhook URL to:
   - `<public-url>/api/payment/webhook`
 - You can also trigger status checks manually by resending webhook payload that contains `order_id`.
+
+### Bruno Usage
+
+1. Open folder `bruno` in Bruno app.
+2. Select environment `local`.
+3. Run requests in sequence:
+   - `01 Auth Google Login` (complete OAuth in browser)
+   - `02 Auth Me`
+   - `03 Payment Create Transaction`
+   - `04 Payment Status`
+   - `05 Payment Webhook Manual` (fill `orderId` env var first)
+   - `06 Protected Content`
+   - `07 Auth Logout`
 
 ## Learning Outcomes
 

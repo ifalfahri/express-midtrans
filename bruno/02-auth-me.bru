@@ -1,0 +1,21 @@
+meta {
+  name: 02 Auth Me
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/auth/me
+  body: none
+  auth: inherit
+}
+
+headers {
+  Cookie: connect.sid=s%3AjEp9raRIAGyeHe4QJuhwafRXmkMiuAbz.OHPcSEdbIfAdEi7W1VXZKhC4a2yrx%2BegmGc95SCbmEY
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+}

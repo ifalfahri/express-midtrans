@@ -1,0 +1,16 @@
+meta {
+  name: 07 Auth Logout
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/auth/logout
+  body: none
+  auth: none
+}
+
+settings {
+  encodeUrl: true
+  followRedirects: true
+}

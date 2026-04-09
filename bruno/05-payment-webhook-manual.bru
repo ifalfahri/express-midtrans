@@ -1,0 +1,26 @@
+meta {
+  name: 05 Payment Webhook Manual
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/api/payment/webhook
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "order_id": "{{orderId}}"
+  }
+}
+
+settings {
+  encodeUrl: true
+  followRedirects: true
+}

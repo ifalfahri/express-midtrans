@@ -25,3 +25,6 @@ coverage/
 # Mac system files
 .DS_Store
 /src/generated/prisma
+
+# Bruno secret
+bruno/collection.bru
