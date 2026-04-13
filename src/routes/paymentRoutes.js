@@ -2,6 +2,10 @@ const express = require('express');
 const prisma = require('../config/prisma');
 const { snap, coreApi } = require('../config/midtrans');
 const { isAuthenticated } = require('../middlewares/authMiddleware');
+const {
+  resolveLocalPaymentStatus,
+  applySubscriptionStateFromTransaction,
+} = require('../services/subscriptionService');
 
 const router = express.Router();
 
@@ -16,23 +20,6 @@ const ALLOWED_PAYMENT_METHODS = [
   'bri_va',
   'permata_va',
 ];
-
-const SUCCESS_TRANSACTION_STATUSES = new Set(['settlement', 'capture']);
-
-function mapMidtransToLocalStatus(transactionStatus, fraudStatus) {
-  if (transactionStatus === 'capture') {
-    return fraudStatus === 'accept' ? 'paid' : 'pending';
-  }
-
-  if (transactionStatus === 'settlement') return 'paid';
-  if (transactionStatus === 'pending') return 'pending';
-  if (transactionStatus === 'deny') return 'failed';
-  if (transactionStatus === 'cancel') return 'failed';
-  if (transactionStatus === 'expire') return 'expired';
-  if (transactionStatus === 'failure') return 'failed';
-
-  return 'pending';
-}
 
 function buildOrderId(userId) {
   const safeUserPart = String(userId || 'user').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'user';
@@ -119,10 +106,22 @@ router.post('/webhook', async (req, res) => {
     }
 
     const verifiedStatus = await coreApi.transaction.status(incomingOrderId);
-    const localStatus = mapMidtransToLocalStatus(
+    const localStatus = resolveLocalPaymentStatus(
       verifiedStatus.transaction_status,
       verifiedStatus.fraud_status
     );
+
+    const existingTransaction = await prisma.transaction.findUnique({
+      where: { orderId: incomingOrderId },
+      include: {
+        subscription: {
+          include: { plan: true },
+        },
+      },
+    });
+    if (!existingTransaction) {
+      return res.status(404).json({ message: 'Transaction not found for order_id' });
+    }
 
     const updatedTransaction = await prisma.transaction.update({
       where: { orderId: incomingOrderId },
@@ -133,10 +132,22 @@ router.post('/webhook', async (req, res) => {
       },
     });
 
-    if (SUCCESS_TRANSACTION_STATUSES.has(verifiedStatus.transaction_status)) {
+    if (existingTransaction.subscription && existingTransaction.subscription.plan) {
+      await applySubscriptionStateFromTransaction(
+        prisma,
+        updatedTransaction,
+        existingTransaction.subscription.plan,
+        localStatus
+      );
+    } else if (localStatus === 'paid') {
       await prisma.user.update({
         where: { id: updatedTransaction.userId },
         data: { isPaid: true },
+      });
+    } else if (localStatus === 'failed' || localStatus === 'expired') {
+      await prisma.user.update({
+        where: { id: updatedTransaction.userId },
+        data: { isPaid: false },
       });
     }
 

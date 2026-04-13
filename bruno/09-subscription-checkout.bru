@@ -1,0 +1,27 @@
+meta {
+  name: 09 Subscription Checkout
+  type: http
+  seq: 9
+}
+
+post {
+  url: {{baseUrl}}/api/subscription/checkout
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "planCode": "{{planCode}}",
+    "paymentMethod": "{{paymentMethod}}"
+  }
+}
+
+settings {
+  encodeUrl: true
+  followRedirects: true
+}

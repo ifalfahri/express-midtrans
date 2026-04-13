@@ -6,7 +6,8 @@ require('./config/passport'); // Load config passport
 
 const authRoutes = require('./routes/authRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
-const { isAuthenticated, isPaidUser } = require('./middlewares/authMiddleware');
+const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const { isAuthenticated, isPaidUser, isSubscriptionUser } = require('./middlewares/authMiddleware');
 
 const app = express();
 
@@ -24,12 +25,21 @@ app.use(passport.session());
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/subscription', subscriptionRoutes);
 
-// Endpoint Protected
-app.get('/api/protected-content', isAuthenticated, isPaidUser, (req, res) => {
+// Endpoint Protected for paid user only
+app.get('/api/protected-content-paid', isAuthenticated, isPaidUser, (req, res) => {
   res.json({ 
-    message: `Halo ${req.user.name}, ini adalah data rahasia.`,
+    message: `Halo ${req.user.name}, ini adalah data khusus paid user.`,
     isPaid: req.user.isPaid 
+  });
+});
+
+// Endpoint Protected for active subscription only
+app.get('/api/protected-content-subscription', isAuthenticated, isSubscriptionUser, (req, res) => {
+  res.json({
+    message: `Halo ${req.user.name}, ini adalah data khusus subscription user.`,
+    isPaid: req.user.isPaid,
   });
 });
 

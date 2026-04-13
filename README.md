@@ -4,7 +4,7 @@ This is a backend demo project to help understand:
 
 - **Google Authentication (OAuth)**
 - **Payment Integration (Midtrans)**
-- **Conditional Access Based on Paid Status**
+- **Conditional Access Based on Subscription Status**
 
 ## Features
 
@@ -25,13 +25,19 @@ This is a backend demo project to help understand:
     - Create transaction and generate payment link/token
     - Handle Midtrans webhook to update payment status
 
-### 3. Payment Status & Access Control
+### 3. Subscription Status & Access Control
 
-- User's payment status: `unpaid` / `paid`
-- Updates status on successful payment notification from Midtrans.
+- Hybrid billing model:
+    - `auto_charge` for recurring-capable channels (`credit_card`, `gopay`)
+    - `manual` fallback for other channels (e.g. `qris`, VA)
+- Multi-plan support:
+    - `monthly`
+    - `yearly`
+- Subscription status lifecycle: `pending`, `active`, `past_due`, `canceled`, `expired`
+- Updates status on Midtrans webhook and local status mapping.
 - Access logic:
-    - Unpaid users have restricted access
-    - Paid users have full access (e.g., can view protected content)
+    - Subscription inactive/expired users have restricted access
+    - Active subscribers have full access (e.g., protected content)
 
 ### 4. API Endpoints
 
@@ -43,6 +49,10 @@ This is a backend demo project to help understand:
 | Payment      | `/api/payment/create-transaction`      | Create new payment, get payment URL/token      |
 |              | `/api/payment/status`                  | Get user's payment status                      |
 |              | `/api/payment/webhook`                 | (POST) Webhook endpoint for Midtrans           |
+| Subscription | `/api/subscription/plans`              | List active subscription plans                 |
+|              | `/api/subscription/checkout`           | Start subscription checkout                    |
+|              | `/api/subscription/me`                 | Get current user subscription                  |
+|              | `/api/subscription/cancel`             | Mark subscription cancel at period end         |
 | Protected    | `/api/protected-content`               | Example route only for paid users              |
 | Auth         | `/api/auth/logout`                     | Logout the current user                        |
 
@@ -109,6 +119,9 @@ Then fill the values in `.env`:
 - `MIDTRANS_CLIENT_KEY`
 - `MIDTRANS_IS_PRODUCTION` (use `false` for sandbox)
 - `MIDTRANS_WEBHOOK_URL` (set to `http://localhost:3000/api/payment/webhook`)
+- `SUBSCRIPTION_GRACE_DAYS` (e.g. `3`)
+- `SUBSCRIPTION_DEFAULT_MONTHLY_CODE` (e.g. `monthly`)
+- `SUBSCRIPTION_DEFAULT_YEARLY_CODE` (e.g. `yearly`)
 - `SESSION_SECRET`
 
 ### 4. Prisma Setup & Database Migration
@@ -127,7 +140,13 @@ npx prisma migrate dev --name init
 
 > Edit the `prisma/schema.prisma` file if you need to adjust tables.
 
-### 5. Run the App
+### 5. Seed Subscription Plans
+
+```bash
+pnpm seed:plans
+```
+
+### 6. Run the App
 
 #### Using pnpm
 
@@ -144,7 +163,7 @@ npm start
 - Server should run on: `http://localhost:3000`
 - Use Bruno to hit endpoints (see testing flow below).
 
-### 6. Install Bruno (API Client)
+### 7. Install Bruno (API Client)
 
 - Download Bruno from the official website: [https://www.usebruno.com](https://www.usebruno.com)
 - Open this project collection folder in Bruno: `./bruno`
@@ -159,18 +178,20 @@ npm start
 2. If not registered, user info is stored in DB.
 3. Session established. Use `/api/auth/me` to check login state.
 
-### Payment
+### Subscription + Payment
 
-1. User initiates payment at `/api/payment/create-transaction`.
-2. Receives payment link or token compatible with various methods (QRIS, OVO, etc).
-3. Once payment is made, Midtrans sends a webhook to `/api/payment/webhook`.
-4. System updates user status from `unpaid` to `paid`.
+1. User fetches plans from `/api/subscription/plans`.
+2. User starts checkout at `/api/subscription/checkout` with `planCode` and `paymentMethod`.
+3. Backend creates pending subscription + transaction and returns Snap link/token.
+4. User completes payment in Midtrans sandbox.
+5. Midtrans webhook hits `/api/payment/webhook`.
+6. System updates transaction + subscription status and subscription period window.
 
 ### Access Control
 
 - Middleware will check:
     - User authenticated
-    - User has `isPaid: true`
+    - User has valid active subscription period
 - Otherwise, restricted endpoints respond with an error.
 
 ---
@@ -180,7 +201,7 @@ npm start
 - All endpoints are plain REST (JSON), tested using **Bruno**.
 - Payment is tested in **Midtrans sandbox environment**.
 
-### Final Testing Flow (Bruno + Browser OAuth)
+### Final Testing Flow (Bruno + Browser OAuth + Subscription)
 
 1. Start app with `pnpm dev`.
 2. Open folder `bruno` in Bruno app and select environment `local`.
@@ -192,25 +213,24 @@ npm start
    - Key: `connect.sid`
    - Value: `<your_cookie_value>`
 5. Run `02 Auth Me` to verify session login.
-6. Run `03 Payment Create Transaction` with body:
+6. Run `08 Subscription Plans` and choose `monthly` or `yearly`.
+7. Set Bruno env vars:
+   - `planCode`: `monthly` or `yearly`
+   - `paymentMethod`: `qris`, `credit_card`, `gopay`, etc.
+8. Run `09 Subscription Checkout`.
 
-```json
-{
-  "amount": 50000,
-  "enabledPayments": ["qris", "gopay", "credit_card", "bank_transfer"]
-}
-```
-
-7. Response returns both:
+9. Response returns both:
    - `snapToken`
    - `redirectUrl`
-8. Open `redirectUrl`, complete sandbox payment.
-9. Process webhook:
+10. Open `redirectUrl`, complete sandbox payment.
+11. Process webhook:
    - Preferred: use ngrok/public tunnel and configure Midtrans notification URL to `<public-url>/api/payment/webhook`.
    - Local fallback: run `05 Payment Webhook Manual` and set `orderId` env var from step 7.
-10. Run `04 Payment Status` and ensure `isPaid` becomes `true`.
-11. Run `06 Protected Content` (should pass only after paid).
-12. Run `07 Auth Logout` to end session.
+12. Run `10 Subscription Me` and verify `status` and billing period fields.
+13. Run `04 Payment Status` and ensure `isPaid` becomes `true`.
+14. Run `06 Protected Content` (should pass only after subscription is active).
+15. Optional: run `11 Subscription Cancel` to mark cancel at period end.
+16. Run `07 Auth Logout` to end session.
 
 ### Webhook Simulation
 
@@ -225,10 +245,13 @@ npm start
 3. Run requests in sequence:
    - `01 Auth Google Login` (complete OAuth in browser)
    - `02 Auth Me`
-   - `03 Payment Create Transaction`
+   - `08 Subscription Plans`
+   - `09 Subscription Checkout`
+   - `10 Subscription Me`
    - `04 Payment Status`
    - `05 Payment Webhook Manual` (fill `orderId` env var first)
    - `06 Protected Content`
+   - `11 Subscription Cancel` (optional)
    - `07 Auth Logout`
 
 ## Learning Outcomes
