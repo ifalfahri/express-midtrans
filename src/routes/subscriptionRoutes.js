@@ -6,6 +6,7 @@ const { isAuthenticated } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
 const RECURRING_SUPPORTED_METHODS = new Set(['credit_card', 'gopay']);
+const DEFAULT_FALLBACK_PAYMENTS = ['credit_card', 'bank_transfer', 'qris', 'gopay'];
 
 function buildOrderId(userId, planCode) {
   const safeUserPart = String(userId || 'user').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'user';
@@ -27,7 +28,7 @@ router.get('/plans', async (_req, res) => {
 
 router.post('/checkout', isAuthenticated, async (req, res) => {
   try {
-    const { planCode, paymentMethod } = req.body;
+    const { planCode, paymentMethod, enabledPayments } = req.body;
     if (!planCode || !paymentMethod) {
       return res.status(400).json({ message: 'planCode and paymentMethod are required' });
     }
@@ -86,7 +87,9 @@ router.post('/checkout', isAuthenticated, async (req, res) => {
         first_name: req.user.name || 'User',
         email: req.user.email,
       },
-      enabled_payments: [paymentMethod],
+      enabled_payments: Array.isArray(enabledPayments) && enabledPayments.length > 0
+        ? enabledPayments
+        : Array.from(new Set([paymentMethod, ...DEFAULT_FALLBACK_PAYMENTS])),
     };
 
     const midtransResponse = await snap.createTransaction(parameter);
@@ -101,6 +104,8 @@ router.post('/checkout', isAuthenticated, async (req, res) => {
       },
       billingMode,
       orderId,
+      paymentMethod,
+      enabledPayments: parameter.enabled_payments,
       snapToken: midtransResponse.token,
       redirectUrl: midtransResponse.redirect_url,
     });
