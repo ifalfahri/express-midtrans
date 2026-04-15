@@ -14,6 +14,14 @@ function buildOrderId(userId, planCode) {
   return `SUB-${Date.now()}-${safePlanPart}-${safeUserPart}`;
 }
 
+function ensureDevMode(res) {
+  if (process.env.NODE_ENV === 'production') {
+    res.status(403).json({ message: 'Dev simulation endpoints are disabled in production' });
+    return false;
+  }
+  return true;
+}
+
 router.get('/plans', async (_req, res) => {
   try {
     const plans = await prisma.plan.findMany({
@@ -156,6 +164,123 @@ router.post('/cancel', isAuthenticated, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ message: 'Failed to cancel subscription', error: error.message });
+  }
+});
+
+router.post('/dev/make-due', isAuthenticated, async (req, res) => {
+  if (!ensureDevMode(res)) return;
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      return res.status(404).json({ message: 'No subscription found for user' });
+    }
+
+    const dueDate = new Date(Date.now() - 60 * 1000);
+    const updated = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        status: 'past_due',
+        currentPeriodEnd: dueDate,
+        nextBillingAt: dueDate,
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { isPaid: false },
+    });
+
+    return res.json({
+      message: 'Subscription moved to due/past_due simulation state',
+      subscription: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to simulate due subscription', error: error.message });
+  }
+});
+
+router.post('/dev/make-expired', isAuthenticated, async (req, res) => {
+  if (!ensureDevMode(res)) return;
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription) {
+      return res.status(404).json({ message: 'No subscription found for user' });
+    }
+
+    const expiredDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const updated = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        status: 'expired',
+        currentPeriodEnd: expiredDate,
+        nextBillingAt: expiredDate,
+        canceledAt: new Date(),
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { isPaid: false },
+    });
+
+    return res.json({
+      message: 'Subscription moved to expired simulation state',
+      subscription: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to simulate expired subscription', error: error.message });
+  }
+});
+
+router.post('/dev/reset-active', isAuthenticated, async (req, res) => {
+  if (!ensureDevMode(res)) return;
+  try {
+    const subscription = await prisma.subscription.findFirst({
+      where: { userId: req.user.id },
+      include: { plan: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!subscription || !subscription.plan) {
+      return res.status(404).json({ message: 'No subscription with plan found for user' });
+    }
+
+    const currentStart = new Date();
+    const currentEnd = new Date(currentStart);
+    if (subscription.plan.interval === 'year') {
+      currentEnd.setFullYear(currentEnd.getFullYear() + 1);
+    } else {
+      currentEnd.setMonth(currentEnd.getMonth() + 1);
+    }
+
+    const updated = await prisma.subscription.update({
+      where: { id: subscription.id },
+      data: {
+        status: 'active',
+        currentPeriodStart: currentStart,
+        currentPeriodEnd: currentEnd,
+        nextBillingAt: currentEnd,
+        canceledAt: null,
+        cancelAtPeriodEnd: false,
+      },
+    });
+
+    await prisma.user.update({
+      where: { id: req.user.id },
+      data: { isPaid: true },
+    });
+
+    return res.json({
+      message: 'Subscription reset to active simulation state',
+      subscription: updated,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to reset subscription simulation state', error: error.message });
   }
 });
 

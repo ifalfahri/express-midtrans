@@ -7,6 +7,7 @@ require('./config/passport'); // Load config passport
 const authRoutes = require('./routes/authRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const subscriptionRoutes = require('./routes/subscriptionRoutes');
+const docsRoutes = require('./routes/docsRoutes');
 const { isAuthenticated, isPaidUser, isSubscriptionUser } = require('./middlewares/authMiddleware');
 
 const app = express();
@@ -26,6 +27,14 @@ app.use(passport.session());
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/subscription', subscriptionRoutes);
+app.use('/docs', docsRoutes);
+
+app.get('/', (_req, res) => {
+  res.json({
+    service: 'express-midtrans',
+    docs: '/docs',
+  });
+});
 
 // Endpoint Protected for paid user only
 app.get('/api/protected-content-paid', isAuthenticated, isPaidUser, (req, res) => {
