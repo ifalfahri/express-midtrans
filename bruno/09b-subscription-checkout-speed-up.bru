@@ -1,7 +1,7 @@
 meta {
-  name: 09 Subscription Checkout (No Add-on)
+  name: 09b Subscription Checkout (With Speed Up)
   type: http
-  seq: 9
+  seq: 10
 }
 
 post {
@@ -17,7 +17,8 @@ headers {
 body:json {
   {
     "planCode": "{{planCode}}",
-    "paymentMethod": "{{paymentMethod}}"
+    "paymentMethod": "{{paymentMethod}}",
+    "addons": ["speed_up"]
   }
 }
 
@@ -26,10 +27,10 @@ tests {
     expect(res.getStatus()).to.equal(201);
   });
 
-  test("Contains USD/IDR price breakdown", function() {
+  test("Includes speed_up add-on in USD total", function() {
     const body = res.getBody();
     expect(body.priceBreakdown).to.not.equal(undefined);
-    expect(body.priceBreakdown.usd.total).to.be.a('number');
+    expect(body.priceBreakdown.usd.addonTotal).to.be.above(0);
     expect(body.priceBreakdown.idr.grossAmount).to.be.a('number');
   });
 }

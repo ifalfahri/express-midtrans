@@ -8,20 +8,21 @@
 
 ## Suggested Request Order
 
-1. `02 Auth Me`
-2. `08 Subscription Plans`
-3. Set Bruno vars:
+1. `00 FX Rate Healthcheck` (validate FX token and IDR rate endpoint)
+2. `02 Auth Me`
+3. `08 Subscription Plans`
+4. Set Bruno vars:
    - `planCode`: weekly/monthly/quarterly/yearly
    - `paymentMethod`: a channel available in your Midtrans account
-4. Optional add-on in `09 Subscription Checkout` body:
-   - include `"speed_up"` in `addons` for monthly-based plans
-5. `09 Subscription Checkout`
-4. Complete payment in Midtrans sandbox via `redirectUrl`
-5. `05 Payment Webhook Manual` (if local webhook is not public)
-6. `10 Subscription Me`
-7. `12 Protected Content Subscription`
-8. `06 Protected Content Paid`
-9. `11 Subscription Cancel` (optional)
+5. Run one of:
+   - `09 Subscription Checkout (No Add-on)` for base pricing
+   - `09b Subscription Checkout (With Speed Up)` for monthly-based plans
+6. Complete payment in Midtrans sandbox via `redirectUrl`
+7. `05 Payment Webhook Manual` (if local webhook is not public)
+8. `10 Subscription Me`
+9. `12 Protected Content Subscription`
+10. `06 Protected Content Paid`
+11. `11 Subscription Cancel` (optional)
 
 ## Simulation Scenarios
 
