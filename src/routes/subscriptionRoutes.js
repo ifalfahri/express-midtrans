@@ -2,11 +2,19 @@ const express = require('express');
 const prisma = require('../config/prisma');
 const { snap } = require('../config/midtrans');
 const { isAuthenticated } = require('../middlewares/authMiddleware');
+const { fetchUsdToIdrRate } = require('../services/fxService');
 
 const router = express.Router();
 
 const RECURRING_SUPPORTED_METHODS = new Set(['credit_card', 'gopay']);
 const DEFAULT_FALLBACK_PAYMENTS = ['credit_card', 'bank_transfer', 'qris', 'gopay'];
+const ADDON_DEFINITIONS = {
+  speed_up: {
+    code: 'speed_up',
+    usdMonthlyAmount: 799,
+    label: 'Speed Up Add-on',
+  },
+};
 
 function buildOrderId(userId, planCode) {
   const safeUserPart = String(userId || 'user').replace(/[^a-zA-Z0-9]/g, '').slice(0, 8) || 'user';
@@ -36,7 +44,7 @@ router.get('/plans', async (_req, res) => {
 
 router.post('/checkout', isAuthenticated, async (req, res) => {
   try {
-    const { planCode, paymentMethod, enabledPayments } = req.body;
+    const { planCode, paymentMethod, enabledPayments, addons = [] } = req.body;
     if (!planCode || !paymentMethod) {
       return res.status(400).json({ message: 'planCode and paymentMethod are required' });
     }
@@ -48,7 +56,34 @@ router.post('/checkout', isAuthenticated, async (req, res) => {
       return res.status(404).json({ message: 'Plan not found' });
     }
 
+    if (plan.currency !== 'USD') {
+      return res.status(400).json({ message: 'Selected plan must be USD-denominated' });
+    }
+
     const billingMode = RECURRING_SUPPORTED_METHODS.has(paymentMethod) ? 'auto_charge' : 'manual';
+    const monthsPerCycle = plan.monthsPerCycle > 0 ? plan.monthsPerCycle : 1;
+
+    const selectedAddons = Array.isArray(addons)
+      ? addons.filter((addonCode) => ADDON_DEFINITIONS[addonCode])
+      : [];
+
+    if (selectedAddons.length > 0 && plan.interval === 'week') {
+      return res.status(400).json({
+        message: 'speed_up add-on is supported only for monthly-based plans',
+      });
+    }
+
+    const planUsdTotal = plan.usdAmount * (plan.interval === 'week' ? 1 : monthsPerCycle);
+    const addonUsdTotal = selectedAddons.reduce((sum, addonCode) => {
+      return sum + ADDON_DEFINITIONS[addonCode].usdMonthlyAmount * monthsPerCycle;
+    }, 0);
+    const usdTotal = planUsdTotal + addonUsdTotal;
+    const { rate: usdToIdrRate } = await fetchUsdToIdrRate();
+    const idrGrossAmount = Math.round(usdTotal * usdToIdrRate);
+
+    if (!Number.isInteger(idrGrossAmount) || idrGrossAmount <= 0) {
+      return res.status(400).json({ message: 'Failed to calculate valid IDR amount from USD pricing' });
+    }
 
     const existing = await prisma.subscription.findFirst({
       where: { userId: req.user.id, status: { in: ['active', 'past_due', 'pending'] } },
@@ -79,7 +114,30 @@ router.post('/checkout', isAuthenticated, async (req, res) => {
     await prisma.transaction.create({
       data: {
         orderId,
-        amount: plan.price,
+        amount: idrGrossAmount,
+        fxRate: usdToIdrRate,
+        originalUsdAmount: usdTotal,
+        idrChargedAmount: idrGrossAmount,
+        lineItemsJson: JSON.stringify({
+          plan: {
+            code: plan.code,
+            usdAmountPerMonth: plan.usdAmount,
+            cycleMonths: monthsPerCycle,
+            interval: plan.interval,
+            usdTotal: planUsdTotal,
+          },
+          addons: selectedAddons.map((addonCode) => ({
+            code: addonCode,
+            usdMonthlyAmount: ADDON_DEFINITIONS[addonCode].usdMonthlyAmount,
+            cycleMonths: monthsPerCycle,
+            usdTotal: ADDON_DEFINITIONS[addonCode].usdMonthlyAmount * monthsPerCycle,
+          })),
+          totals: {
+            usd: usdTotal,
+            idr: idrGrossAmount,
+            fxRate: usdToIdrRate,
+          },
+        }),
         status: 'pending',
         userId: req.user.id,
         subscriptionId: subscription.id,
@@ -89,7 +147,7 @@ router.post('/checkout', isAuthenticated, async (req, res) => {
     const parameter = {
       transaction_details: {
         order_id: orderId,
-        gross_amount: plan.price,
+        gross_amount: idrGrossAmount,
       },
       customer_details: {
         first_name: req.user.name || 'User',
@@ -108,12 +166,24 @@ router.post('/checkout', isAuthenticated, async (req, res) => {
         code: plan.code,
         name: plan.name,
         interval: plan.interval,
-        price: plan.price,
+        usdAmount: plan.usdAmount,
+        currency: plan.currency,
       },
       billingMode,
       orderId,
       paymentMethod,
       enabledPayments: parameter.enabled_payments,
+      priceBreakdown: {
+        usd: {
+          planTotal: planUsdTotal,
+          addonTotal: addonUsdTotal,
+          total: usdTotal,
+        },
+        idr: {
+          fxRate: usdToIdrRate,
+          grossAmount: idrGrossAmount,
+        },
+      },
       snapToken: midtransResponse.token,
       redirectUrl: midtransResponse.redirect_url,
     });

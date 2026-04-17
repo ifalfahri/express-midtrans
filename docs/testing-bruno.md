@@ -10,7 +10,12 @@
 
 1. `02 Auth Me`
 2. `08 Subscription Plans`
-3. `09 Subscription Checkout`
+3. Set Bruno vars:
+   - `planCode`: weekly/monthly/quarterly/yearly
+   - `paymentMethod`: a channel available in your Midtrans account
+4. Optional add-on in `09 Subscription Checkout` body:
+   - include `"speed_up"` in `addons` for monthly-based plans
+5. `09 Subscription Checkout`
 4. Complete payment in Midtrans sandbox via `redirectUrl`
 5. `05 Payment Webhook Manual` (if local webhook is not public)
 6. `10 Subscription Me`
